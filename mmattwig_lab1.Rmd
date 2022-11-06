@@ -1,0 +1,136 @@
+---
+title: "EAS648_lab1_mmattwig"
+author: "Melissa Mattwig"
+date: '2022-11-01'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# For plotting
+library(ggplot2)
+# For downloading Census data
+library(tidycensus)
+# For creating tmap
+library(tmap)
+# For reading and processing spatial data related to tmap      
+library(tmaptools)
+# For data wrangling
+library(dplyr)        
+# For reading, writing and working with spatial objects
+library(sf)      
+library(rgeos)
+library(rgdal)
+library(maptools)    
+# also loads sp()
+library(RColorBrewer) # creates nice color schemes
+library(classInt)     # finds class intervals for continuous variables
+library(tidyverse)        
+#install.packages("cartography")
+library(cartography) 
+library(SpatialPosition)
+library(biscale)
+library(cowplot)
+```
+
+# Question 1 
+1. What are the benefits and challenges of an open data science approach? Give an example based on this week's reading. (1-2 paragraphs)
+
+The benefits of an open data science approach include providing free access to large scales of data. In addition to free access to large amounts of data, this approach extends to open source programs and software to analyze and visualize the data. The article from this week's reading discussed the amount of data that was collected for the Obama administration during his candidacy for presidency. The amount of social, political, and economic insight that could be gained from this data is hidden and unavailable for analysis. On the other hand, open source data has the challenge of providing false or low-quality data and analysis. Coupled with the fact that there is increasingly large amounts of data created everyday due to the improved capacities of technology, providing falsified data can have huge impacts on decisions made based on that data.
+
+# Visualization of Population in Cuyahoga County, OH (Cleveland)
+
+First, we get the data from the American Community Survey and assign variables related to racial demographics, then show a table with the first 5 rows
+
+```{r, results = 'hide'}
+Ohio <- get_acs(state = "OH", geography = "tract", variables = "B19013_001", geometry = TRUE, cb = FALSE)
+racevars <- c(White = "P005003",
+              Black = "P005004",
+              Asian = "P005006",
+              Hispanic = "P004003",
+              HouseUnits = "H001001",
+              Rent = "H004004" )
+
+Cuyahoga <- get_decennial(geography = "tract", variables = racevars,
+                       state = "OH", county = "Cuyahoga County", geometry = TRUE,
+                       summary_var = "P001001")
+```
+
+```{r}
+head(Cuyahoga)
+```
+
+Here, we are transforming the coordinate reference system to better match Northeast Ohio.
+
+```{r}
+Cuyahoga <- st_transform(Cuyahoga, crs = 32122)
+Cuyahoga <- Cuyahoga |> spread(variable, value) |> rename("Pop2010" = "summary_value")  
+head(Cuyahoga)
+
+```
+
+
+Visualization of racial data in Cleveland
+
+The first visual is just a base map of Cuyahoga county using ```ggplot```.
+
+```{r, echo=FALSE}
+ggplot() +
+    geom_sf(data =Cuyahoga,
+    fill = NA, alpha = .2) +
+    theme_bw()
+
+```
+
+These are the same plots, but adding onto ggplot by adding a color ramp
+
+```{r}
+Cuyahoga %>%
+  ggplot(aes(fill = Black)) +
+  geom_sf(color = NA) +
+  coord_sf(crs = 32122) +
+  scale_fill_viridis_c(option = "viridis")
+
+Cuyahoga %>%
+  ggplot(aes(fill = White)) +
+  geom_sf(color = NA) +
+  coord_sf(crs = 32122) +
+  scale_fill_viridis_c(option = "viridis")
+```
+
+Visualization of Cleveland population using the package ```tmaps```
+
+```{r}
+Cuyahoga <- Cuyahoga[1:446,]
+tm_shape(Cuyahoga) + 
+  tm_polygons("Black")
+
+```
+
+Now here is a bivariate map using the packages ```biscale``` and ```cowplot``` to show the percent Black population and rent prices in Cleveland
+
+
+```{r}
+data <- bi_class(Cuyahoga, x = Black, y = Rent, style = "quantile", dim = 3)
+map <- ggplot() +
+  geom_sf(data = data, mapping = aes(fill = bi_class), color = "white", size = 0.1, show.legend = FALSE) +
+  bi_scale_fill(pal = "GrPink", dim = 3) +
+  ggtitle("Black Population vs Rent in Cleveland, OH") + 
+  bi_theme() + theme(plot.title = element_text(size=15))
+
+
+legend <- bi_legend(pal = "GrPink",
+                    dim = 3,
+                    xlab = "Higher % Black ",
+                    ylab = "Higher Rent ",
+                    size = 7)
+
+finalPlot <- ggdraw() +
+  draw_plot(map, 0, 0, 1, 1) +
+  draw_plot(legend, 0.2, .65, 0.2, 0.2)
+
+finalPlot
+
+```
+
+
